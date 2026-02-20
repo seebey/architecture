@@ -254,19 +254,19 @@ def make_line(x1, y1, x2, y2, label, group, layer_name):
     return wire
 
 
-def make_rotated_rect(cx, cy, length, width, angle_deg, label, group, layer_name):
+def _rotated_corners(cx, cy, length, width, angle_deg):
     """
-    Create a rectangle rotated about its center (cx, cy) in feet.
+    Return 4 corner points of a rectangle rotated about (cx, cy).
 
     Before rotation the rectangle is axis-aligned:
       - Length is measured along Y
       - Width  is measured along X
-    Then corners are rotated *angle_deg* CCW about (cx, cy).
+    Corners are rotated *angle_deg* CCW about (cx, cy).
+    Returns list of (x_ft, y_ft) tuples.
     """
     half_w = width / 2.0
     half_l = length / 2.0
 
-    # Corners before rotation (relative to center), CW winding
     raw_corners = [
         (-half_w, -half_l),
         ( half_w, -half_l),
@@ -278,44 +278,22 @@ def make_rotated_rect(cx, cy, length, width, angle_deg, label, group, layer_name
     cos_a = math.cos(rad)
     sin_a = math.sin(rad)
 
-    rotated_pts = []
-    for dx, dy in raw_corners:
-        rx = cx + dx * cos_a - dy * sin_a
-        ry = cy + dx * sin_a + dy * cos_a
-        rotated_pts.append((rx, ry))
+    return [(cx + dx * cos_a - dy * sin_a,
+             cy + dx * sin_a + dy * cos_a) for dx, dy in raw_corners]
 
-    return make_closed_wire(rotated_pts, label, group, layer_name)
+
+def make_rotated_rect(cx, cy, length, width, angle_deg, label, group, layer_name):
+    """Create a rectangle rotated about its center (cx, cy) in feet."""
+    pts = _rotated_corners(cx, cy, length, width, angle_deg)
+    return make_closed_wire(pts, label, group, layer_name)
 
 
 def barn_corners():
     """
     Return the 4 corner points of the barn after rotation, as a list
     of (x_ft, y_ft) tuples.
-
-    Uses BARN_CX, BARN_CY, BARN_LENGTH, BARN_WIDTH, and BARN_ROTATION.
-    Length along Y, Width along X before rotation.
     """
-    half_w = BARN_WIDTH / 2.0
-    half_l = BARN_LENGTH / 2.0
-
-    raw_corners = [
-        (-half_w, -half_l),
-        ( half_w, -half_l),
-        ( half_w,  half_l),
-        (-half_w,  half_l),
-    ]
-
-    rad = math.radians(BARN_ROTATION)
-    cos_a = math.cos(rad)
-    sin_a = math.sin(rad)
-
-    corners = []
-    for dx, dy in raw_corners:
-        rx = BARN_CX + dx * cos_a - dy * sin_a
-        ry = BARN_CY + dx * sin_a + dy * cos_a
-        corners.append((rx, ry))
-
-    return corners
+    return _rotated_corners(BARN_CX, BARN_CY, BARN_LENGTH, BARN_WIDTH, BARN_ROTATION)
 
 
 def make_tree(cx_ft, cy_ft, radius_ft, label, group):
@@ -337,15 +315,22 @@ def export_dxf(doc, filename):
     Filters out DocumentObjectGroup containers.
     The file is written to OUTPUT_DIR/filename.
     """
-    import importDXF
+    try:
+        import importDXF
+    except ImportError:
+        print("DXF export failed: importDXF module not available.")
+        return None
 
     filepath = os.path.join(OUTPUT_DIR, filename)
     export_objs = [
         o for o in doc.Objects
         if not o.isDerivedFrom("App::DocumentObjectGroup")
     ]
-    importDXF.export(export_objs, filepath)
-    print("DXF exported: {}".format(filepath))
+    try:
+        importDXF.export(export_objs, filepath)
+        print("DXF exported: {}".format(filepath))
+    except Exception as e:
+        print("DXF export failed: {}".format(e))
     return filepath
 
 
