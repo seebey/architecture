@@ -1,181 +1,52 @@
-# ═══════════════════════════════════════════════════════════════════
-# MODERN RUSTIC FARMHOUSE — SITE PLAN GENERATOR
+# ===================================================================
+# MODERN RUSTIC FARMHOUSE -- COURTYARD COMPOUND SITE PLAN
 # FreeCAD Python Script (tested on FreeCAD 0.21+)
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 #
 # Generates a complete 2D site plan for a modern rustic farmhouse
-# on a 1-acre (200' x 220') rectangular lot.
+# courtyard compound on a 1-acre (200' x 220') rectangular lot.
 #
-# Layout: L-shaped main house with wrap-around porch, detached
-# garage, courtyard pool, and perimeter tree buffer.
+# Layout: Three buildings arranged around a central courtyard:
+#   - Main House (L-shaped: primary bar E-W + wing extending N)
+#   - Guest Pavilion (north of courtyard)
+#   - Barn / Garage (rotated, east of compound)
+#   - Breezeway connecting wing to guest pavilion
+#   - Corten canopy + fire wall in courtyard
+#   - Arrival drive curving from east lot edge
 #
-# Usage: Paste entire script into FreeCAD's Python console.
+# Usage: Paste entire script into FreeCAD's Python console,
+#        or run via:  freecad -c farmhouse_site_plan.py
 # Output: DXF file at ~/farmhouse_site_plan.dxf
 #
-# All dimensions specified in feet; converted to mm internally.
-# ═══════════════════════════════════════════════════════════════════
+# All dimensions specified in feet; converted to mm internally
+# via farmhouse_params.py.
+# ===================================================================
 
-import FreeCAD
-import Draft
-import random
+import sys
 import os
-
-# ───────────────────────────────────────────────────
-# UNIT CONVERSION
-# ───────────────────────────────────────────────────
-FT = 304.8  # 1 foot = 304.8 millimeters
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from farmhouse_params import *
+import random
 
 
-def v(x_ft, y_ft):
-    """Convert (x, y) in feet to a FreeCAD.Vector in mm."""
-    return FreeCAD.Vector(x_ft * FT, y_ft * FT, 0)
-
-
-# ───────────────────────────────────────────────────
-# OUTPUT CONFIGURATION
-# ───────────────────────────────────────────────────
-OUTPUT_DIR = os.path.expanduser("~")
-DXF_FILENAME = "farmhouse_site_plan.dxf"
-DXF_PATH = os.path.join(OUTPUT_DIR, DXF_FILENAME)
-
-# ───────────────────────────────────────────────────
-# SITE PARAMETERS (all values in feet)
-# ───────────────────────────────────────────────────
-LOT_WIDTH = 200
-LOT_DEPTH = 220
+# ===================================================================
+# LOCAL PARAMETERS
+# ===================================================================
 
 SETBACK_FRONT = 35   # south (street side)
-SETBACK_SIDE = 20    # east and west
-SETBACK_REAR = 30    # north
+SETBACK_SIDE  = 20   # east and west
+SETBACK_REAR  = 30   # north
 
-TREE_TARGET = 75
-TREE_SEED = 42
+TREE_TARGET    = 75
+TREE_SEED      = 42
 TREE_RADIUS_MIN = 4
 TREE_RADIUS_MAX = 8
-TREE_MIN_GAP = 4     # minimum gap between tree canopies
-
-# ───────────────────────────────────────────────────
-# BUILDING COORDINATES (feet)
-# ───────────────────────────────────────────────────
-# Main bar: 64' x 30', runs east-west
-MB_X1, MB_Y1 = 52, 75
-MB_X2, MB_Y2 = 116, 105
-
-# Wing: 24' x 28', extends north from east end of main bar
-WG_X1, WG_Y1 = 92, 105
-WG_X2, WG_Y2 = 116, 133
-
-# Wrap-around porch: 8' deep on south and west of main bar
-PORCH_DEPTH = 8
-PORCH_S_Y = MB_Y1 - PORCH_DEPTH   # 67
-PORCH_W_X = MB_X1 - PORCH_DEPTH   # 44
-
-# Rear patio: 8' deep, inside the L courtyard
-PATIO_X1, PATIO_Y1 = MB_X1, MB_Y2       # 52, 105
-PATIO_X2, PATIO_Y2 = WG_X1, MB_Y2 + 8   # 92, 113
-
-# Garage: 24' x 28', detached northeast
-GAR_X1, GAR_Y1 = 136, 88
-GAR_X2, GAR_Y2 = 160, 116
-
-# Pool: 32' x 16', in courtyard
-POOL_X1, POOL_Y1 = 54, 113
-POOL_X2, POOL_Y2 = 86, 129
-
-# Pool deck: 6' surround
-DECK_PAD = 6
-DECK_X1 = POOL_X1 - DECK_PAD   # 48
-DECK_Y1 = POOL_Y1 - DECK_PAD   # 107
-DECK_X2 = POOL_X2 + DECK_PAD   # 92
-DECK_Y2 = POOL_Y2 + DECK_PAD   # 135
-
-# Front walkway: 6' wide, centered on main bar
-WALK_CX = (MB_X1 + MB_X2) / 2   # 84
-WALK_HW = 3                      # half-width
-WALK_X1 = WALK_CX - WALK_HW     # 81
-WALK_X2 = WALK_CX + WALK_HW     # 87
-WALK_Y1 = 0                      # starts at street
-WALK_Y2 = PORCH_S_Y             # ends at porch (67)
-
-# Driveway: 14' lane + 32'x13' parking pad
-DRV_LANE_X1, DRV_LANE_X2 = 141, 155   # 14' wide lane
-DRV_PAD_X1, DRV_PAD_X2 = 130, 162     # 32' wide pad
-DRV_PAD_Y = 75                         # where pad begins
-DRV_PAD_TOP = GAR_Y1                   # pad top at garage face (88)
-
-# ───────────────────────────────────────────────────
-# VISUAL STYLE (line_color RGB 0-1, line_width in px)
-# ───────────────────────────────────────────────────
-LAYER_STYLE = {
-    "LOT":       {"color": (0.00, 0.00, 0.00), "width": 2.0},
-    "BUILDING":  {"color": (0.15, 0.15, 0.50), "width": 2.5},
-    "PORCH":     {"color": (0.55, 0.35, 0.15), "width": 1.5},
-    "GARAGE":    {"color": (0.35, 0.35, 0.35), "width": 2.0},
-    "POOL":      {"color": (0.00, 0.45, 0.85), "width": 1.5},
-    "HARDSCAPE": {"color": (0.60, 0.55, 0.45), "width": 1.0},
-    "DRIVEWAY":  {"color": (0.45, 0.45, 0.45), "width": 1.0},
-    "TREES":     {"color": (0.10, 0.50, 0.10), "width": 0.75},
-}
-
-# ───────────────────────────────────────────────────
-# TREE EXCLUSION ZONES (x1, y1, x2, y2 in feet)
-# ───────────────────────────────────────────────────
-EXCLUSION_ZONES = [
-    (PORCH_W_X - 2, PORCH_S_Y - 2, MB_X2 + 2, PATIO_Y2 + 2),  # house + porch + patio
-    (WG_X1 - 4, WG_Y1 - 2, WG_X2 + 2, WG_Y2 + 4),             # wing
-    (DECK_X1 - 4, DECK_Y1 - 4, DECK_X2 + 4, DECK_Y2 + 4),     # pool deck
-    (GAR_X1 - 4, GAR_Y1 - 4, GAR_X2 + 4, GAR_Y2 + 4),         # garage
-    (DRV_PAD_X1 - 4, 0, DRV_PAD_X2 + 4, DRV_PAD_TOP + 4),     # driveway
-    (WALK_X1 - 4, 0, WALK_X2 + 4, WALK_Y2 + 4),                # front walkway
-]
+TREE_MIN_GAP   = 4   # minimum gap between tree canopies
 
 
-# ═══════════════════════════════════════════════════════════════════
-# HELPER FUNCTIONS
-# ═══════════════════════════════════════════════════════════════════
-
-def apply_style(obj, layer_name):
-    """Set line color and width on an object's ViewObject."""
-    style = LAYER_STYLE.get(layer_name)
-    if not style:
-        return
-    try:
-        vo = obj.ViewObject
-        if vo:
-            vo.LineColor = style["color"]
-            vo.LineWidth = style["width"]
-    except Exception:
-        pass
-
-
-def make_closed_wire(points_ft, label, group, layer_name):
-    """
-    Create a closed Draft Wire from (x, y) tuples in feet.
-    Add to group and apply layer style.
-    """
-    vectors = [v(x, y) for x, y in points_ft]
-    wire = Draft.make_wire(vectors, closed=True, face=False)
-    wire.Label = label
-    group.addObject(wire)
-    apply_style(wire, layer_name)
-    return wire
-
-
-def make_rect(x1, y1, x2, y2, label, group, layer_name):
-    """Convenience: closed rectangular wire from two corner coords in feet."""
-    pts = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
-    return make_closed_wire(pts, label, group, layer_name)
-
-
-def make_tree(cx_ft, cy_ft, radius_ft, label, group):
-    """Create a Draft Circle (tree canopy) at the given center in feet."""
-    circle = Draft.make_circle(radius_ft * FT)
-    circle.Placement.Base = v(cx_ft, cy_ft)
-    circle.Label = label
-    group.addObject(circle)
-    apply_style(circle, "TREES")
-    return circle
-
+# ===================================================================
+# TREE HELPER FUNCTIONS
+# ===================================================================
 
 def overlaps_exclusion(x, y, r, zones):
     """True if circle (x, y, r) overlaps any exclusion rectangle."""
@@ -194,40 +65,65 @@ def too_close(x, y, r, placed, min_gap):
     return False
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
+# TREE EXCLUSION ZONES (x1, y1, x2, y2 in feet)
+# ===================================================================
+
+EXCLUSION_ZONES = [
+    (MAIN_X1 - 4, MAIN_Y1 - 4, MAIN_X2 + 4, MAIN_Y2 + 4),                  # main bar
+    (WING_X1 - 4, WING_Y1, WING_X2 + 4, WING_Y2 + 4),                       # wing
+    (GUEST_X1 - 4, GUEST_Y1 - GUEST_PORCH_DEPTH - 4,
+     GUEST_X2 + 4, GUEST_Y2 + 4),                                            # guest + porch
+    (COURT_X1 - 2, COURT_Y1, COURT_X2, COURT_Y2),                            # courtyard
+    (BW_X1 - 2, BW_Y1 - 2, BW_X2 + 2, BW_Y2 + 2),                           # breezeway
+    (130, 70, LOT_WIDTH, 115),                                                 # driveway corridor
+]
+
+# Add barn bounding box from barn_corners()
+bc = barn_corners()
+barn_xs = [c[0] for c in bc]
+barn_ys = [c[1] for c in bc]
+EXCLUSION_ZONES.append((min(barn_xs) - 4, min(barn_ys) - 4,
+                         max(barn_xs) + 4, max(barn_ys) + 4))
+
+
+# ===================================================================
 # DOCUMENT SETUP
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 doc = FreeCAD.newDocument("FarmhouseSitePlan")
 print("Document created: FarmhouseSitePlan")
 
-# ───────────────────────────────────────────────────
+# -------------------------------------------------------------------
 # Create layer groups
-# ───────────────────────────────────────────────────
+# -------------------------------------------------------------------
+layer_names = ["SITE", "MAIN_HOUSE", "GUEST", "BARN", "BREEZEWAY",
+               "COURTYARD", "CANOPY", "DRIVEWAY", "TREES"]
+
 layers = {}
-for name in LAYER_STYLE:
+for name in layer_names:
     layers[name] = doc.addObject("App::DocumentObjectGroup", name)
-print("Layer groups created: " + ", ".join(LAYER_STYLE.keys()))
+print("Layer groups created: " + ", ".join(layer_names))
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # GEOMETRY GENERATION
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
-# ───────────────────────────────────────────────────
-# 1. LOT BOUNDARY — 200' x 220'
-# ───────────────────────────────────────────────────
+# -------------------------------------------------------------------
+# 1. LOT BOUNDARY -- 200' x 220'
+# -------------------------------------------------------------------
 make_rect(0, 0, LOT_WIDTH, LOT_DEPTH,
-          "Lot_Boundary", layers["LOT"], "LOT")
+          "Lot_Boundary", layers["SITE"], "SITE")
 print("Lot boundary created: {}' x {}'".format(LOT_WIDTH, LOT_DEPTH))
 
-# ───────────────────────────────────────────────────
-# 2. SETBACK LINES (dashed reference, on LOT layer)
-# ───────────────────────────────────────────────────
+# -------------------------------------------------------------------
+# 2. SETBACK LINES (dashed, lighter styling, on SITE layer)
+# -------------------------------------------------------------------
 setback_wire = make_rect(
     SETBACK_SIDE, SETBACK_FRONT,
     LOT_WIDTH - SETBACK_SIDE, LOT_DEPTH - SETBACK_REAR,
-    "Setback_Lines", layers["LOT"], "LOT"
+    "Setback_Lines", layers["SITE"], "SITE"
 )
 try:
     setback_wire.ViewObject.DrawStyle = "Dashed"
@@ -238,102 +134,115 @@ except Exception:
 print("Setback lines created: front={}', sides={}', rear={}'".format(
     SETBACK_FRONT, SETBACK_SIDE, SETBACK_REAR))
 
-# ───────────────────────────────────────────────────
-# 3. BUILDING FOOTPRINT — L-shaped farmhouse
-#    Main bar: 64' x 30'  |  Wing: 24' x 28'
-#    Total footprint: ~2,592 SF
-#    Estimated total area (2 story): ~4,512 SF
-# ───────────────────────────────────────────────────
-building_pts = [
-    (MB_X1, MB_Y1),   # 52,  75  — SW corner main bar
-    (MB_X2, MB_Y1),   # 116, 75  — SE corner main bar
-    (MB_X2, WG_Y2),   # 116, 133 — NE corner wing
-    (WG_X1, WG_Y2),   # 92,  133 — NW corner wing
-    (WG_X1, MB_Y2),   # 92,  105 — inside corner of L
-    (MB_X1, MB_Y2),   # 52,  105 — NW corner main bar
+# -------------------------------------------------------------------
+# 3. MAIN HOUSE FOOTPRINT -- L-shaped polygon
+#    Primary bar (64' x 30') + wing (24' x 28')
+# -------------------------------------------------------------------
+house_pts = [
+    (MAIN_X1, MAIN_Y1),   # SW corner of bar (68, 85)
+    (MAIN_X2, MAIN_Y1),   # SE corner of bar (132, 85)
+    (MAIN_X2, WING_Y2),   # NE corner of wing (132, 143)
+    (WING_X1, WING_Y2),   # NW corner of wing (108, 143)
+    (WING_X1, MAIN_Y2),   # inside corner of L (108, 115)
+    (MAIN_X1, MAIN_Y2),   # NW corner of bar (68, 115)
 ]
-make_closed_wire(building_pts, "House_Footprint", layers["BUILDING"], "BUILDING")
-print("Building footprint created: L-shaped, ~2,592 SF")
+make_closed_wire(house_pts, "Main_House", layers["MAIN_HOUSE"], "MAIN_HOUSE")
+print("Main house footprint created: L-shaped (bar {}' x {}' + wing {}' x {}')".format(
+    MAIN_BAR_LENGTH, MAIN_BAR_WIDTH, WING_WIDTH, WING_LENGTH))
 
-# ───────────────────────────────────────────────────
-# 4. PORCH — Wrap-around (south + west of main bar)
-#    8' deep on both faces
-# ───────────────────────────────────────────────────
-porch_wrap_pts = [
-    (PORCH_W_X, PORCH_S_Y),  # 44, 67  — SW outer corner
-    (MB_X2,     PORCH_S_Y),  # 116, 67 — SE of south porch
-    (MB_X2,     MB_Y1),      # 116, 75 — meets building SE
-    (MB_X1,     MB_Y1),      # 52, 75  — meets building SW
-    (MB_X1,     MB_Y2),      # 52, 105 — meets building NW
-    (PORCH_W_X, MB_Y2),      # 44, 105 — NW of west porch
+# -------------------------------------------------------------------
+# 4. GUEST PAVILION FOOTPRINT -- 40' x 20' rectangle
+# -------------------------------------------------------------------
+make_rect(GUEST_X1, GUEST_Y1, GUEST_X2, GUEST_Y2,
+          "Guest_Pavilion", layers["GUEST"], "GUEST")
+print("Guest pavilion created: {}' x {}'".format(GUEST_LENGTH, GUEST_WIDTH))
+
+# -------------------------------------------------------------------
+# 5. BARN FOOTPRINT -- rotated rectangle
+# -------------------------------------------------------------------
+make_rotated_rect(BARN_CX, BARN_CY, BARN_LENGTH, BARN_WIDTH, BARN_ROTATION,
+                  "Barn", layers["BARN"], "BARN")
+print("Barn created: {}' x {}', rotated {}deg CCW at ({}, {})".format(
+    BARN_LENGTH, BARN_WIDTH, BARN_ROTATION, BARN_CX, BARN_CY))
+
+# -------------------------------------------------------------------
+# 6. BREEZEWAY FOOTPRINT -- 5' x 8' connecting wing to guest
+# -------------------------------------------------------------------
+make_rect(BW_X1, BW_Y1, BW_X2, BW_Y2,
+          "Breezeway", layers["BREEZEWAY"], "BREEZEWAY")
+print("Breezeway created: {}' x {}'".format(BREEZEWAY_WIDTH, BREEZEWAY_LENGTH))
+
+# -------------------------------------------------------------------
+# 7. COURTYARD PAVING ZONE -- rectangular paving area
+#    Three sides defined by buildings, west side open (conceptual)
+# -------------------------------------------------------------------
+court_pts = [
+    (COURT_X2, COURT_Y1),   # SE corner (at wing/main intersection)
+    (COURT_X2, COURT_Y2),   # NE corner (at breezeway)
+    (COURT_X1, COURT_Y2),   # NW corner (near guest pavilion)
+    (COURT_X1, COURT_Y1),   # SW corner
 ]
-make_closed_wire(porch_wrap_pts, "Porch_WrapAround", layers["PORCH"], "PORCH")
-print("Wrap-around porch created: 8' deep, south + west")
+make_closed_wire(court_pts, "Courtyard_Paving", layers["COURTYARD"], "COURTYARD")
+print("Courtyard paving created: {}' x {}'".format(COURT_LENGTH, COURT_WIDTH))
 
-# ───────────────────────────────────────────────────
-# 5. PORCH — Rear covered patio (courtyard, inside L)
-#    40' x 8', connects to pool deck area
-# ───────────────────────────────────────────────────
-make_rect(PATIO_X1, PATIO_Y1, PATIO_X2, PATIO_Y2,
-          "Porch_RearPatio", layers["PORCH"], "PORCH")
-print("Rear patio created: {}' x {}'".format(
-    PATIO_X2 - PATIO_X1, PATIO_Y2 - PATIO_Y1))
+# -------------------------------------------------------------------
+# 8. CORTEN CANOPY -- extends from main bar north face into courtyard
+#    24' wide (great room width) x 10' deep
+# -------------------------------------------------------------------
+canopy_x1 = MAIN_X1                    # aligned with great room west end
+canopy_x2 = MAIN_X1 + 24               # 24' wide (width of great room)
+canopy_y1 = MAIN_Y2                    # main bar north face
+canopy_y2 = MAIN_Y2 + CANOPY_DEPTH    # extends into courtyard
+make_rect(canopy_x1, canopy_y1, canopy_x2, canopy_y2,
+          "Corten_Canopy", layers["CANOPY"], "CANOPY")
+print("Corten canopy created: {}' x {}' extending into courtyard".format(
+    canopy_x2 - canopy_x1, CANOPY_DEPTH))
 
-# ───────────────────────────────────────────────────
-# 6. GARAGE — Detached, 24' x 28'
-#    Northeast of house, aligned with driveway
-# ───────────────────────────────────────────────────
-make_rect(GAR_X1, GAR_Y1, GAR_X2, GAR_Y2,
-          "Garage", layers["GARAGE"], "GARAGE")
-print("Garage created: {}' x {}', detached NE".format(
-    GAR_X2 - GAR_X1, GAR_Y2 - GAR_Y1))
+# -------------------------------------------------------------------
+# 9. FIRE WALL -- freestanding concrete wall in south courtyard
+#    12' wide x 1' thick, centered E-W
+# -------------------------------------------------------------------
+fw_cx = (COURT_X1 + COURT_X2) / 2     # centered E-W in courtyard
+fw_y = COURT_Y1 + 10                  # 10' north of main bar
+make_rect(fw_cx - FIRE_WALL_WIDTH / 2, fw_y,
+          fw_cx + FIRE_WALL_WIDTH / 2, fw_y + FIRE_WALL_THICKNESS,
+          "Fire_Wall", layers["CANOPY"], "CANOPY")
+print("Fire wall created: {}' x {}' at courtyard center".format(
+    FIRE_WALL_WIDTH, FIRE_WALL_THICKNESS))
 
-# ───────────────────────────────────────────────────
-# 7. POOL — 32' x 16', courtyard placement
-# ───────────────────────────────────────────────────
-make_rect(POOL_X1, POOL_Y1, POOL_X2, POOL_Y2,
-          "Pool", layers["POOL"], "POOL")
-print("Pool created: {}' x {}'".format(
-    POOL_X2 - POOL_X1, POOL_Y2 - POOL_Y1))
-
-# ───────────────────────────────────────────────────
-# 8. HARDSCAPE — Pool deck (6' surround)
-# ───────────────────────────────────────────────────
-make_rect(DECK_X1, DECK_Y1, DECK_X2, DECK_Y2,
-          "Pool_Deck", layers["HARDSCAPE"], "HARDSCAPE")
-print("Pool deck created: {}' x {}' (6' surround)".format(
-    DECK_X2 - DECK_X1, DECK_Y2 - DECK_Y1))
-
-# ───────────────────────────────────────────────────
-# 9. HARDSCAPE — Front walkway (6' wide)
-# ───────────────────────────────────────────────────
-make_rect(WALK_X1, WALK_Y1, WALK_X2, WALK_Y2,
-          "Front_Walkway", layers["HARDSCAPE"], "HARDSCAPE")
-print("Front walkway created: {}' wide, {}' long".format(
-    WALK_X2 - WALK_X1, WALK_Y2 - WALK_Y1))
-
-# ───────────────────────────────────────────────────
-# 10. DRIVEWAY — 14' lane + parking pad
-#     Lane: 14' wide from street to y=75'
-#     Pad:  32' x 13' widens in front of garage
-# ───────────────────────────────────────────────────
-driveway_pts = [
-    (DRV_LANE_X1, 0),           # 141, 0   — SW at street
-    (DRV_LANE_X2, 0),           # 155, 0   — SE at street
-    (DRV_LANE_X2, DRV_PAD_Y),   # 155, 75  — lane meets pad (E)
-    (DRV_PAD_X2,  DRV_PAD_Y),   # 162, 75  — pad SE
-    (DRV_PAD_X2,  DRV_PAD_TOP), # 162, 88  — pad NE (at garage)
-    (DRV_PAD_X1,  DRV_PAD_TOP), # 130, 88  — pad NW
-    (DRV_PAD_X1,  DRV_PAD_Y),   # 130, 75  — pad SW
-    (DRV_LANE_X1, DRV_PAD_Y),   # 141, 75  — lane meets pad (W)
+# -------------------------------------------------------------------
+# 10. ARRIVAL DRIVE -- open polyline from east lot edge to main house
+#     Gentle curve through barn area
+# -------------------------------------------------------------------
+drive_pts = [
+    (LOT_WIDTH, 80),                                    # entry from east lot edge
+    (185, 85),                                           # gentle curve begins
+    (170, 92),
+    (BARN_CX + 15, BARN_CY - 5),                       # approaches barn
+    (BARN_CX - 5, BARN_CY - 15),                       # past barn
+    (140, 90),
+    (MAIN_X2 + 5, (MAIN_Y1 + MAIN_Y2) / 2),           # arrives at main house entry
 ]
-make_closed_wire(driveway_pts, "Driveway", layers["DRIVEWAY"], "DRIVEWAY")
-print("Driveway created: 14' lane + 32' x 13' parking pad")
+drive_vectors = [v(x, y) for x, y in drive_pts]
+drive = Draft.make_wire(drive_vectors, closed=False, face=False)
+drive.Label = "Arrival_Drive"
+layers["DRIVEWAY"].addObject(drive)
+apply_style(drive, "DRIVEWAY")
+print("Arrival drive created: {} points, east lot edge to main house entry".format(
+    len(drive_pts)))
+
+# -------------------------------------------------------------------
+# 11. GUEST PAVILION SOUTH PORCH -- 6' deep covered porch
+# -------------------------------------------------------------------
+make_rect(GUEST_X1, GUEST_Y1 - GUEST_PORCH_DEPTH, GUEST_X2, GUEST_Y1,
+          "Guest_South_Porch", layers["COURTYARD"], "COURTYARD")
+print("Guest south porch created: {}' x {}'".format(
+    GUEST_LENGTH, GUEST_PORCH_DEPTH))
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # TREE PLACEMENT
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 print("Placing trees...")
 random.seed(TREE_SEED)
@@ -398,69 +307,66 @@ print("Trees placed: {} total ({} perimeter, {} interior)".format(
     len(placed_trees), perimeter_placed, len(placed_trees) - perimeter_placed))
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # RECOMPUTE AND FIT VIEW
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 doc.recompute()
 print("Document recomputed.")
 
-# Fit the view to show the entire site plan
+# Try to fit view
 try:
     import FreeCADGui
     FreeCADGui.ActiveDocument.ActiveView.fitAll()
     FreeCADGui.ActiveDocument.ActiveView.viewTop()
     print("View set to top-down, fit to extents.")
 except Exception:
-    print("GUI not available — skipping view adjustment.")
+    pass
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # DXF EXPORT
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
-try:
-    import importDXF
-
-    # Collect all geometry objects (exclude group containers)
-    export_objs = [
-        o for o in doc.Objects
-        if not o.isDerivedFrom("App::DocumentObjectGroup")
-    ]
-
-    importDXF.export(export_objs, DXF_PATH)
-    print("=" * 50)
-    print("DXF exported successfully!")
-    print("File: {}".format(DXF_PATH))
-    print("=" * 50)
-
-except Exception as e:
-    print("=" * 50)
-    print("Automatic DXF export failed: {}".format(e))
-    print("")
-    print("Manual export steps:")
-    print("  1. Select all objects in the Model tree")
-    print("  2. File > Export...")
-    print("  3. Choose 'Autodesk DXF 2D (*.dxf)' format")
-    print("  4. Save to desired location")
-    print("=" * 50)
+export_dxf(doc, "farmhouse_site_plan.dxf")
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # SUMMARY
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 print("")
-print("SITE PLAN SUMMARY")
-print("-" * 40)
-print("Lot:          {}' x {}' (1 acre)".format(LOT_WIDTH, LOT_DEPTH))
-print("House:        L-shaped, ~2,592 SF footprint")
-print("              ~4,512 SF total (2 stories)")
-print("Porch:        8' wrap-around (S+W) + 8' rear patio")
-print("Garage:       24' x 28' detached (NE)")
-print("Pool:         32' x 16' with 6' deck surround")
-print("Driveway:     14' lane + 32' x 13' parking pad")
-print("Trees:        {} placed".format(len(placed_trees)))
-print("Layers:       {}".format(", ".join(LAYER_STYLE.keys())))
-print("-" * 40)
+print("=" * 55)
+print("COURTYARD COMPOUND SITE PLAN SUMMARY")
+print("=" * 55)
+print("Lot:            {}' x {}' (1 acre)".format(LOT_WIDTH, LOT_DEPTH))
+print("Setbacks:       front={}', sides={}', rear={}'".format(
+    SETBACK_FRONT, SETBACK_SIDE, SETBACK_REAR))
+print("")
+print("BUILDINGS:")
+print("  Main House:   L-shaped (bar {}' x {}' + wing {}' x {}')".format(
+    MAIN_BAR_LENGTH, MAIN_BAR_WIDTH, WING_WIDTH, WING_LENGTH))
+print("                at ({}, {}) to ({}, {})".format(
+    MAIN_X1, MAIN_Y1, MAIN_X2, WING_Y2))
+print("  Guest Pav:    {}' x {}' at ({}, {})".format(
+    GUEST_LENGTH, GUEST_WIDTH, GUEST_X1, GUEST_Y1))
+print("  Barn/Garage:  {}' x {}' rotated {}deg at ({}, {})".format(
+    BARN_LENGTH, BARN_WIDTH, BARN_ROTATION, BARN_CX, BARN_CY))
+print("  Breezeway:    {}' x {}' at ({}, {})".format(
+    BREEZEWAY_WIDTH, BREEZEWAY_LENGTH, BW_X1, BW_Y1))
+print("")
+print("COURTYARD:")
+print("  Paving:       {}' x {}'".format(COURT_LENGTH, COURT_WIDTH))
+print("  Canopy:       {}' x {}'".format(canopy_x2 - canopy_x1, CANOPY_DEPTH))
+print("  Fire Wall:    {}' x {}'".format(FIRE_WALL_WIDTH, FIRE_WALL_THICKNESS))
+print("  Guest Porch:  {}' x {}'".format(GUEST_LENGTH, GUEST_PORCH_DEPTH))
+print("")
+print("LANDSCAPE:")
+print("  Trees:        {} placed ({} perimeter, {} interior)".format(
+    len(placed_trees), perimeter_placed, len(placed_trees) - perimeter_placed))
+print("  Drive:        {} point arrival curve from east".format(len(drive_pts)))
+print("")
+print("Layers:         {}".format(", ".join(layer_names)))
+print("Export:         ~/farmhouse_site_plan.dxf")
+print("=" * 55)
 print("Script complete.")
